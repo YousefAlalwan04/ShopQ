@@ -1,0 +1,13 @@
+package com.shopQ.MainShopQ;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class MainShopQApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(MainShopQApplication.class, args);
+	}
+
+}
