@@ -23,6 +23,9 @@ import java.io.IOException;
 
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
+
+    public static String CURRENT_USER = "";
+
     private final HandlerExceptionResolver handlerExceptionResolver;
 
     private final JwtService jwtService;
@@ -51,12 +54,12 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         try{
             final String jwt = authHeader.substring(7).trim();
 
-            final String userEmail = jwtService.extractUserNameUsingToken(jwt);
-
+            final String userName = jwtService.extractUserNameUsingToken(jwt);
+            CURRENT_USER = userName;
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
-            if(userEmail != null && authentication == null){
-                UserDetails userDetails = this.userDetailsService.loadUserByUsername(userEmail);
+            if(userName != null && authentication == null){
+                UserDetails userDetails = this.userDetailsService.loadUserByUsername(userName);
                 if(jwtService.isTokenValid(jwt, userDetails)){
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                             userDetails,
