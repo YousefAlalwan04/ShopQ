@@ -23,8 +23,8 @@ public class ProductController {
     }
 
     @GetMapping("/all")
-    public Iterable<Product> getAllProducts() {
-        return productService.getAllProducts();
+    public Iterable<Product> getAllProducts(@RequestParam(defaultValue = "0") int pageNumber) {
+        return productService.getAllProducts(pageNumber);
     }
 
     @PostMapping(value = {"/add"}, consumes = {MediaType.MULTIPART_FORM_DATA_VALUE})
