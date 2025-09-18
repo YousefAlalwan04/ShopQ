@@ -29,9 +29,17 @@ public class ProductService {
     public Product updateProduct(Product product) {
         return productRepo.save(product);
     }
-    public Iterable<Product> getAllProducts(int pageNumber) {
-        Pageable pageable = PageRequest.of(pageNumber, 1);
-        return productRepo.findAll(pageable);
+    public Iterable<Product> getAllProducts(int pageNumber, String filterKey) {
+        Pageable pageable = PageRequest.of(pageNumber, 5);
+
+        if(!filterKey.isEmpty()){
+            return productRepo.findByProductNameContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
+                    filterKey, filterKey, pageable
+            );
+        }
+        else {
+            return productRepo.findAll(pageable);
+        }
     }
 
     public Product getProductById(Long id) {
