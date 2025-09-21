@@ -5,6 +5,8 @@ import com.shopQ.MainShopQ.entity.ProductImage;
 import com.shopQ.MainShopQ.products.service.ProductService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -67,6 +69,13 @@ public class ProductController {
     public Product getProductById(@PathVariable Long id) {
         return productService.getProductById(id);
     }
+
+    @GetMapping("/get-products-to-checkout/")
+    public ResponseEntity<?> getProductsDetialsForCheckout(@RequestParam(name = "isSingleProduct") boolean isSingleProduct,
+                                                           @RequestParam(name = "productId") Long productId) {
+         return productService.getProductsDetialsForCheckout(isSingleProduct, productId);
+        }
+
 
 
     @GetMapping("/name/{name}")

@@ -61,7 +61,7 @@ public class CartService {
         return null;
 
     }
-
+    @Transactional
     public ResponseEntity<?> getMyCartItems() {
         try {
             String currentUserUsername = JwtAuthFilter.CURRENT_USER;
@@ -85,5 +85,31 @@ public class CartService {
         }
     }
 
+    @Transactional
+    public ResponseEntity<?> removeCartItem(Long cartItemId) {
+        try {
+            String currentUserUsername = JwtAuthFilter.CURRENT_USER;
+            User currentUser = userRepo.findByUsername(currentUserUsername)
+                    .orElseThrow(() -> new RuntimeException("User not found"));
+
+            if (currentUser == null) {
+                return new ResponseEntity<>("you don't have access LMAO LOSER", HttpStatus.UNAUTHORIZED);
+            }
+
+            Cart cartItem = cartRepo.findById(cartItemId)
+                    .orElseThrow(() -> new RuntimeException("Cart item not found"));
+
+            if (!cartItem.getUser().getId().equals(currentUser.getId())) {
+                return new ResponseEntity<>("You do not have permission to delete this item", HttpStatus.FORBIDDEN);
+            }
+
+            cartRepo.delete(cartItem);
+            return new ResponseEntity<>("Cart item removed successfully", HttpStatus.OK);
+        } catch (NoSuchElementException e) {
+            return new ResponseEntity<>("Cart item not found", HttpStatus.NOT_FOUND);
+        } catch (Exception e) {
+            return new ResponseEntity<>("Something went wrong while removing the cart item", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
 }
 

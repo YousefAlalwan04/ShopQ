@@ -37,4 +37,12 @@ public class CartController {
         return cartService.getMyCartItems();
     }
 
+
+    @PreAuthorize("hasRole('USER')")
+    @DeleteMapping("/remove/{cartItemId}")
+    public ResponseEntity<?> removeCartItem(@PathVariable Long cartItemId) {
+        return cartService.removeCartItem(cartItemId);
+    }
+
+
 }

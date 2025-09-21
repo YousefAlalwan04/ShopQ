@@ -1,7 +1,9 @@
 package com.shopQ.MainShopQ.orders.service;
 
+import com.fasterxml.jackson.core.ObjectCodec;
 import com.shopQ.MainShopQ.auth.config.JwtAuthFilter;
 import com.shopQ.MainShopQ.auth.repository.UserRepo;
+import com.shopQ.MainShopQ.cart.repository.CartRepo;
 import com.shopQ.MainShopQ.entity.*;
 import com.shopQ.MainShopQ.orders.dto.*;
 import com.shopQ.MainShopQ.orders.repository.OrderRepository;
@@ -13,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class OrderService {
@@ -30,17 +33,22 @@ public class OrderService {
     @Autowired
     private final OrderRepository orderRepository;
 
-    public OrderService(ProductRepo productRepo, UserRepo userRepo, OrderRepository orderRepository) {
+    @Autowired
+    private final CartRepo cartRepo;
+    private ObjectCodec objectCodec;
+
+    public OrderService(ProductRepo productRepo, UserRepo userRepo, OrderRepository orderRepository, CartRepo cartRepo) {
         this.productRepo = productRepo;
         this.userRepo = userRepo;
         this.orderRepository = orderRepository;
+        this.cartRepo = cartRepo;
     }
 
 
-    public OrderValidationResponse validateOrder(OrderItem orderItem) {
+    public OrderValidationResponse validateOrder(boolean isCartCheckout,OrderItem orderItem) {
         List<OrderProductQuantity> productQuantityList = orderItem.getOrderProductQuantity();
 
-        if (productQuantityList == null || productQuantityList.isEmpty()) {
+        if ((productQuantityList == null || productQuantityList.isEmpty()) && !isCartCheckout) {
             throw new IllegalArgumentException("Order must contain at least one product");
         }
 
@@ -93,7 +101,7 @@ public class OrderService {
 
    // Confirm order after user has reviewed stock issues
     @Transactional
-    public String confirmOrder(OrderConfirmationRequest confirmationRequest) {
+    public String confirmOrder(boolean isCartCheckout, OrderConfirmationRequest confirmationRequest) {
 
         String currentUserUsername = JwtAuthFilter.CURRENT_USER;
         if (currentUserUsername == null || currentUserUsername.isEmpty()) {
@@ -140,9 +148,8 @@ public class OrderService {
 
                 // Update the available product quantity
                 product.setQuantity(product.getQuantity() - item.getQuantity());
-
-
                 productRepo.save(product);
+
                 orderRepository.save(order);
 
                 orderSummary.append("- ").append(product.getProductName())
@@ -155,16 +162,48 @@ public class OrderService {
             }
         }
 
+        // Clear cart only if the order is successfully placed and it's a cart checkout
+        if (isCartCheckout) {
+            for (OrderProductQuantity item : confirmationRequest.getOrderProductQuantity()) {
+                if (item.getQuantity() > 0) {
+                    // Find the specific cart item for this product and user
+                    Optional<Cart> cartItem = cartRepo.findByProductIdAndUserId(item.getProductId(), user.getId());
+                    cartItem.ifPresent(cart -> cartRepo.deleteById(cart.getCartId()));
+                }
+            }
+        }
+
         return orderSummary.toString();
     }
 
     // Place order directly if theres no stock issues (auto-confirm)
     @Transactional
-    public String placeOrder(OrderItem orderItem) {
-        OrderValidationResponse validation = validateOrder(orderItem);
+    public String placeOrder(boolean isCartCheckout, OrderItem orderItem) {
+
+        OrderItem finalOrderItem;
+
+        if (isCartCheckout) {
+            finalOrderItem = createOrderItemFromCart();
+            if (orderItem != null) {
+                if (orderItem.getFullName() != null && !orderItem.getFullName().isEmpty()) {
+                    finalOrderItem.setFullName(orderItem.getFullName());
+                }
+                if (orderItem.getFullAdress() != null && !orderItem.getFullAdress().isEmpty()) {
+                    finalOrderItem.setFullAdress(orderItem.getFullAdress());
+                }
+            }
+
+        } else {
+            // for single product checkout, use the orderItem from response body directly
+            if (orderItem == null) {
+                throw new IllegalArgumentException("Order details are required for single product checkout");
+            }
+            finalOrderItem = orderItem;
+        }
+
+        OrderValidationResponse validation = validateOrder(isCartCheckout,finalOrderItem);
 
         if (!validation.isCanProceed()) {
-
             StringBuilder errorMessage = new StringBuilder("Stock issues found:\n");
             for (StockCheckResult issue : validation.getStockIssues()) {
                 errorMessage.append("- ").append(issue.getMessage()).append("\n");
@@ -175,12 +214,12 @@ public class OrderService {
 
         // If no issues, auto confirm with original quantities
         OrderConfirmationRequest autoConfirm = new OrderConfirmationRequest();
-        autoConfirm.setFullName(orderItem.getFullName());
-        autoConfirm.setFullAdress(orderItem.getFullAdress());
+        autoConfirm.setFullName(finalOrderItem.getFullName());
+        autoConfirm.setFullAdress(finalOrderItem.getFullAdress());
         autoConfirm.setAcceptPartialOrder(false);
 
         List<OrderProductQuantity> confirmedItems = new ArrayList<>();
-        for (OrderProductQuantity pq : orderItem.getOrderProductQuantity()) {
+        for (OrderProductQuantity pq : finalOrderItem.getOrderProductQuantity()) {
             OrderProductQuantity confirmedItem = new OrderProductQuantity();
             confirmedItem.setProductId(pq.getProductId());
             confirmedItem.setQuantity(pq.getQuantity());
@@ -188,7 +227,39 @@ public class OrderService {
         }
         autoConfirm.setOrderProductQuantity(confirmedItems);
 
-        return confirmOrder(autoConfirm);
+        return confirmOrder(isCartCheckout, autoConfirm);
+    }
+
+    private OrderItem createOrderItemFromCart() {
+        String currentUserUsername = JwtAuthFilter.CURRENT_USER;
+        if (currentUserUsername == null || currentUserUsername.isEmpty()) {
+            throw new IllegalStateException("User not authenticated");
+        }
+
+        User user = userRepo.findByUsername(currentUserUsername)
+                .orElseThrow(() -> new IllegalStateException("User not found"));
+
+        List<Cart> carts = cartRepo.findByUser(user);
+        if (carts.isEmpty()) {
+            throw new IllegalStateException("Cart is empty");
+        }
+
+        OrderItem orderItem = new OrderItem();
+
+        orderItem.setFullName(user.getUsername());
+        orderItem.setFullAdress("Default Address");
+
+        List<OrderProductQuantity> items = carts.stream()
+                .map(cart -> {
+                    OrderProductQuantity item = new OrderProductQuantity();
+                    item.setProductId(cart.getProduct().getId());
+                    item.setQuantity(cart.getQuantity());
+                    return item;
+                })
+                .collect(Collectors.toList());
+
+        orderItem.setOrderProductQuantity(items);
+        return orderItem;
     }
 
     public List<Order> getCurrentUserOrders() {
