@@ -35,13 +35,22 @@ public class OrderService {
 
     @Autowired
     private final CartRepo cartRepo;
-    private ObjectCodec objectCodec;
 
     public OrderService(ProductRepo productRepo, UserRepo userRepo, OrderRepository orderRepository, CartRepo cartRepo) {
         this.productRepo = productRepo;
         this.userRepo = userRepo;
         this.orderRepository = orderRepository;
         this.cartRepo = cartRepo;
+    }
+
+    private double effectiveUnitPrice(Product product) {
+        if (product == null) return 0d;
+        Double price = product.getPrice();
+        Double discounted = product.getDiscountedPrice();
+        if (discounted != null && price != null && discounted > 0 && discounted < price) {
+            return discounted;
+        }
+        return price != null ? price : 0d;
     }
 
 
@@ -133,13 +142,16 @@ public class OrderService {
             }
 
             try {
+                double unitPrice = effectiveUnitPrice(product);
+                double lineTotal = unitPrice * item.getQuantity();
+
                 Order order = new Order(
                         confirmationRequest.getFullName(),
                         confirmationRequest.getFullAdress(),
                         user.getEmail(),
                         product.getProductName(),
                         item.getQuantity(),
-                        product.getPrice() * item.getQuantity(),
+                        lineTotal,
                         ORDER_STATUS_PLACED,
                         orderDate,
                         product,
@@ -154,7 +166,7 @@ public class OrderService {
 
                 orderSummary.append("- ").append(product.getProductName())
                            .append(": ").append(item.getQuantity())
-                           .append(" units ordered for $").append(product.getPrice() * item.getQuantity())
+                           .append(" units ordered for $").append(lineTotal)
                            .append("\n");
 
             } catch (Exception e) {

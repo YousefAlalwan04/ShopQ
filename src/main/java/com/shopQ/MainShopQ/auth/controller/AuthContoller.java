@@ -30,7 +30,7 @@ public class AuthContoller {
     public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest loginRequest) {
         User authenticatedUser = authService.authenticate(loginRequest);
         String token = jwtService.generateToken(authenticatedUser);
-        LoginResponse response = new LoginResponse(token, jwtService.getExpiration());
+        LoginResponse response = new LoginResponse(token, authenticatedUser.getRole(), jwtService.getExpiration());
         return ResponseEntity.ok(response);
     }
 

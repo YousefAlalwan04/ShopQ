@@ -41,8 +41,7 @@ public class CartService {
             return new ResponseEntity<>("Product not found", HttpStatus.NOT_FOUND);
         }
 
-        // if product is already in cart (didnt make it to update
-        // the current wanted quantity)
+
         if (cartRepo.findByProductIdAndUserId(product.getId(), currentUser.getId()).isPresent()) {
             return new ResponseEntity<>("Product is already in cart", HttpStatus.BAD_REQUEST);
         }

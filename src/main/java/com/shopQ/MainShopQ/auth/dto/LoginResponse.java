@@ -7,10 +7,12 @@ import lombok.Setter;
 @Setter
 public class LoginResponse {
     private String token;
+    private String role;
     private Long expiresIn;
 
-    public LoginResponse(String token, Long expiresIn) {
+    public LoginResponse(String token, String role, Long expiresIn) {
         this.token = token;
+        this.role = role;
         this.expiresIn = expiresIn;
     }
 }

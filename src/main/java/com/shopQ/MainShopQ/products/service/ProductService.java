@@ -5,18 +5,22 @@ import com.shopQ.MainShopQ.auth.repository.UserRepo;
 import com.shopQ.MainShopQ.cart.repository.CartRepo;
 import com.shopQ.MainShopQ.entity.Cart;
 import com.shopQ.MainShopQ.entity.Product;
+import com.shopQ.MainShopQ.entity.ProductImage;
 import com.shopQ.MainShopQ.entity.User;
 import com.shopQ.MainShopQ.products.repository.ProductRepo;
-import org.apache.catalina.LifecycleState;
+import com.shopQ.MainShopQ.products.repository.ProductImageRepo;
+import com.shopQ.MainShopQ.orders.repository.OrderRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.data.domain.Pageable;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.security.PrivateKey;
-import java.util.List;
+import java.io.IOException;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -30,6 +34,12 @@ public class ProductService {
     @Autowired
     private CartRepo cartRepo;
 
+    @Autowired
+    private ProductImageRepo productImageRepo;
+
+    @Autowired
+    private OrderRepository orderRepository;
+
     public ProductService(ProductRepo productRepo, UserRepo userRepo) {
         this.productRepo = productRepo;
         this.userRepo = userRepo;
@@ -40,11 +50,63 @@ public class ProductService {
     }
 
     public void deleteProductById(Long id) {
+        // Prevent deleting products that are already referenced by orders
+        if (orderRepository != null && orderRepository.existsByProduct_Id(id)) {
+            throw new IllegalStateException("Cannot delete product because it is referenced by existing orders. Consider disabling it instead.");
+        }
         productRepo.deleteById(id);
     }
 
     public Product updateProduct(Product product) {
         return productRepo.save(product);
+    }
+
+    @Transactional
+    public Product updateProductWithImages(Product incoming, MultipartFile[] addImages, List<Long> removeImageIds) throws IOException {
+        if (incoming == null || incoming.getId() == null) {
+            throw new IllegalArgumentException("Product id is required for update");
+        }
+        Product existing = productRepo.findById(incoming.getId())
+                .orElseThrow(() -> new NoSuchElementException("Product not found: " + incoming.getId()));
+
+        if (incoming.getProductName() != null) existing.setProductName(incoming.getProductName());
+        if (incoming.getDescription() != null) existing.setDescription(incoming.getDescription());
+        if (incoming.getPrice() != null) existing.setPrice(incoming.getPrice());
+        if (incoming.getDiscountedPrice() != null) existing.setDiscountedPrice(incoming.getDiscountedPrice());
+        if (incoming.getQuantity() >= 0) existing.setQuantity(incoming.getQuantity());
+
+        if (existing.getImages() == null) {
+            existing.setImages(new HashSet<>());
+        }
+
+        if (removeImageIds != null && !removeImageIds.isEmpty()) {
+            Set<ProductImage> toRemove = existing.getImages().stream()
+                    .filter(img -> img.getId() != null && removeImageIds.contains(img.getId()))
+                    .collect(Collectors.toSet());
+            existing.getImages().removeAll(toRemove);
+        }
+
+        // Add new images if provided
+        if (addImages != null && addImages.length > 0) {
+            for (MultipartFile file : addImages) {
+                if (file == null || file.isEmpty()) continue;
+                ProductImage image = new ProductImage(
+                        file.getOriginalFilename(),
+                        file.getContentType(),
+                        file.getBytes()
+                );
+                existing.getImages().add(image);
+            }
+        }
+
+        Product saved = productRepo.save(existing);
+        if (removeImageIds != null && !removeImageIds.isEmpty()) {
+            for (Long imageId : removeImageIds) {
+                try { productImageRepo.deleteById(imageId); } catch (Exception ignored) {}
+            }
+        }
+
+        return saved;
     }
 
     public Iterable<Product> getAllProducts(int pageNumber, String filterKey) {
